@@ -4,59 +4,88 @@ import os
 
 # ========================= CONFIG =========================
 TOKEN = os.getenv("DISCORD_TOKEN")
-
-GUILD_ID = 1419326775573479426
-TARGET_VC_ID = 1502621775970828331
 TRIGGER_USER_ID = 1479793866931568640
-TRIGGER_MESSAGE = "HOW R THEY JOINING VC"
 # ========================================================
 
-client = discord.Client()   # No intents version
+client = discord.Client()
 
 @client.event
 async def on_ready():
     print(f"✅ Selfbot logged in as {client.user}")
-    guild = client.get_guild(GUILD_ID)
-    if guild:
-        await join_target_vc(guild)
 
-async def join_target_vc(guild):
-    vc = guild.get_channel(TARGET_VC_ID)
-    if not vc or not isinstance(vc, discord.VoiceChannel):
-        print("❌ Target VC not found")
+# Main handler for VC ALERT
+@client.event
+async def on_message(message):
+    if message.author.id != TRIGGER_USER_ID:
+        return
+    if not message.guild is None:  # Only respond to DMs
         return
 
-    # Disconnect from wrong VC
-    for vc_client in client.voice_clients:
-        if vc_client.channel and vc_client.channel.id != TARGET_VC_ID:
-            await vc_client.disconnect()
+    content = message.content.strip()
+    if not content.startswith("VC ALERT"):
+        return
 
     try:
-        await vc.connect(self_deaf=True, self_mute=True)
-        print(f"🎤 Joined locked VC: {vc.name}")
-    except Exception as e:
-        print(f"❌ Join failed: {e}")
+        parts = content.split()
+        if len(parts) < 4:
+            print("❌ Invalid VC ALERT format")
+            return
 
+        vc_id = int(parts[1])
+        invite_code = parts[2].replace("https://discord.gg/", "").replace("https://discord.com/invite/", "")
+        guild_id = int(parts[3])
+
+        print(f"🔴 VC ALERT received! VC: {vc_id} | Server: {guild_id}")
+
+        # Join server if not already in it
+        if not client.get_guild(guild_id):
+            print("➡️ Joining server via invite...")
+            try:
+                await client.accept_invite(invite_code)
+                await asyncio.sleep(2)
+            except Exception as e:
+                print(f"Invite error: {e}")
+
+        guild = client.get_guild(guild_id)
+        if not guild:
+            print("❌ Could not join/find server")
+            return
+
+        vc = guild.get_channel(vc_id)
+        if not vc or not isinstance(vc, discord.VoiceChannel):
+            print("❌ Voice channel not found")
+            return
+
+        # Force leave current VC
+        for vc_client in client.voice_clients:
+            await vc_client.disconnect()
+            await asyncio.sleep(1)
+
+        # Join target VC
+        await vc.connect(self_deaf=True, self_mute=True)
+        print(f"🎤 Successfully joined VC: {vc.name}")
+
+    except Exception as e:
+        print(f"❌ Error processing alert: {e}")
+
+# Auto stay in current VC (if dragged out)
 @client.event
 async def on_voice_state_update(member, before, after):
     if member.id != client.user.id:
         return
 
-    if after.channel is None or (after.channel and after.channel.id != TARGET_VC_ID):
-        print("⚠️ Dragged out → forcing back in 3s...")
-        await asyncio.sleep(3)
-        guild = client.get_guild(GUILD_ID)
-        if guild:
-            await join_target_vc(guild)
-    else:
-        print("✅ In target VC")
+    if len(client.voice_clients) == 0:
+        return
 
-@client.event
-async def on_message(message):
-    if message.author.id == TRIGGER_USER_ID and message.content.strip().upper() == TRIGGER_MESSAGE:
-        print(f"🔴 Trigger message detected from {message.author} → Joining VC")
-        guild = client.get_guild(GUILD_ID)
-        if guild:
-            await join_target_vc(guild)
+    current_vc = client.voice_clients[0].channel
+
+    if after.channel is None or after.channel.id != current_vc.id:
+        print("⚠️ Dragged out → rejoining in 3s...")
+        await asyncio.sleep(3)
+        try:
+            await current_vc.connect(self_deaf=True, self_mute=True)
+            print("✅ Rejoined VC")
+        except:
+            pass
 
 client.run(TOKEN)
