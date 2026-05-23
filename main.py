@@ -13,42 +13,60 @@ client = discord.Client()
 async def on_ready():
     print(f"✅ Selfbot logged in as {client.user}")
 
-# Main handler for VC ALERT
 @client.event
 async def on_message(message):
     if message.author.id != TRIGGER_USER_ID:
         return
-    if not message.guild is None:  # Only respond to DMs
+    if message.guild is not None:          # Only DMs
         return
 
-    content = message.content.strip()
+    content = message.content.strip().upper()
+
     if not content.startswith("VC ALERT"):
         return
 
+    print(f"🔴 VC ALERT received: {message.content}")
+
     try:
-        parts = content.split()
+        # Better parsing
+        parts = message.content.split()
         if len(parts) < 4:
-            print("❌ Invalid VC ALERT format")
+            print("❌ Not enough arguments in VC ALERT")
             return
 
-        vc_id = int(parts[1])
-        invite_code = parts[2].replace("https://discord.gg/", "").replace("https://discord.com/invite/", "")
-        guild_id = int(parts[3])
+        # Find the numbers
+        vc_id = None
+        guild_id = None
+        invite = None
 
-        print(f"🔴 VC ALERT received! VC: {vc_id} | Server: {guild_id}")
+        for i, part in enumerate(parts):
+            if part.isdigit() and vc_id is None:
+                vc_id = int(part)
+            elif part.isdigit() and guild_id is None and vc_id is not None:
+                guild_id = int(part)
+            elif "discord.gg" in part.lower() or "discord.com/invite" in part.lower():
+                invite = part
 
-        # Join server if not already in it
+        if not vc_id or not guild_id:
+            print("❌ Could not parse VC ID or Guild ID")
+            return
+
+        print(f"📌 Parsed → VC: {vc_id} | Guild: {guild_id} | Invite: {invite}")
+
+        # Join server if needed
         if not client.get_guild(guild_id):
-            print("➡️ Joining server via invite...")
-            try:
-                await client.accept_invite(invite_code)
-                await asyncio.sleep(2)
-            except Exception as e:
-                print(f"Invite error: {e}")
+            if invite:
+                try:
+                    invite_code = invite.split("/")[-1]
+                    await client.accept_invite(invite_code)
+                    print("✅ Joined server via invite")
+                    await asyncio.sleep(3)
+                except Exception as e:
+                    print(f"Invite failed: {e}")
 
         guild = client.get_guild(guild_id)
         if not guild:
-            print("❌ Could not join/find server")
+            print("❌ Could not find server")
             return
 
         vc = guild.get_channel(vc_id)
@@ -56,19 +74,19 @@ async def on_message(message):
             print("❌ Voice channel not found")
             return
 
-        # Force leave current VC
+        # Force leave any current VC
         for vc_client in client.voice_clients:
             await vc_client.disconnect()
             await asyncio.sleep(1)
 
-        # Join target VC
+        # Join target
         await vc.connect(self_deaf=True, self_mute=True)
         print(f"🎤 Successfully joined VC: {vc.name}")
 
     except Exception as e:
         print(f"❌ Error processing alert: {e}")
 
-# Auto stay in current VC (if dragged out)
+# Stay logic
 @client.event
 async def on_voice_state_update(member, before, after):
     if member.id != client.user.id:
@@ -84,7 +102,6 @@ async def on_voice_state_update(member, before, after):
         await asyncio.sleep(3)
         try:
             await current_vc.connect(self_deaf=True, self_mute=True)
-            print("✅ Rejoined VC")
         except:
             pass
 
