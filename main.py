@@ -7,14 +7,15 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 GUILD_ID = 1419326775573479426
 TARGET_VC_ID = 1502621775970828331
+TRIGGER_USER_ID = 1479793866931568640
+TRIGGER_MESSAGE = "HOW R THEY JOINING VC"
 # ========================================================
 
-client = discord.Client()   # ← No intents
+client = discord.Client()   # No intents version
 
 @client.event
 async def on_ready():
     print(f"✅ Selfbot logged in as {client.user}")
-    
     guild = client.get_guild(GUILD_ID)
     if guild:
         await join_target_vc(guild)
@@ -41,7 +42,6 @@ async def on_voice_state_update(member, before, after):
     if member.id != client.user.id:
         return
 
-    # If dragged OUT of target VC
     if after.channel is None or (after.channel and after.channel.id != TARGET_VC_ID):
         print("⚠️ Dragged out → forcing back in 3s...")
         await asyncio.sleep(3)
@@ -49,6 +49,14 @@ async def on_voice_state_update(member, before, after):
         if guild:
             await join_target_vc(guild)
     else:
-        print("✅ Staying in target VC (dragged in)")
+        print("✅ In target VC")
+
+@client.event
+async def on_message(message):
+    if message.author.id == TRIGGER_USER_ID and message.content.strip().upper() == TRIGGER_MESSAGE:
+        print(f"🔴 Trigger message detected from {message.author} → Joining VC")
+        guild = client.get_guild(GUILD_ID)
+        if guild:
+            await join_target_vc(guild)
 
 client.run(TOKEN)
